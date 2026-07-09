@@ -1,120 +1,78 @@
 <?php
-// Este controlador recibe peticiones AJAX desde js/factura.js
-// y las traduce en llamadas al modelo Factura.
-// Siempre responde en formato JSON.
-
-header('Content-Type: application/json; charset=utf-8');
-
+// Incluimos el modelo de Factura
 require_once __DIR__ . "/../modelo/Factura.php";
+
+header("Content-Type: application/json; charset=UTF-8");
 
 $Factura = new Factura();
 
-// La accion a ejecutar llega por GET o POST (accion=guardar|listar|eliminar)
-$accion = $_REQUEST['accion'] ?? '';
+// Leemos el cuerpo de la peticion en formato JSON
+$datos = json_decode(file_get_contents("php://input"), true);
 
-switch ($accion)
-{
-    // Devuelve el listado de facturas (encabezado) en formato JSON
-    // para llenar la tabla principal (tablaFacturas)
+switch ($_GET["op"]) {
+
+    // Devuelve la lista de facturas (encabezados)
     case 'listar':
         $rspta = $Factura->listar();
-        $facturas = array();
+        $lista = array();
 
-        while ($fila = $rspta->fetch_object())
-        {
-            $facturas[] = array(
-                'id' => $fila->id,
-                'fecha' => date('d/m/Y', strtotime($fila->fecha)),
-                'cedula' => $fila->cedula_cliente,
-                'nombreCliente' => $fila->nombreCliente,
-                'cantidadProductos' => (int)$fila->cantidadProductos,
-                'total' => (float)$fila->total
-            );
+        while ($fila = $rspta->fetch_assoc()) {
+            $lista[] = $fila;
         }
 
-        echo json_encode(array('exito' => true, 'datos' => $facturas));
+        echo json_encode([
+            "exito" => true,
+            "datos" => $lista
+        ]);
         break;
 
-    // Guarda una nueva factura (encabezado + detalle) y devuelve el id creado
+    // Guarda una factura completa: encabezado + detalle
+    // El detalle llega dentro del JSON como un arreglo de productos
     case 'guardar':
-        $cedula = $_POST['cedula'] ?? '';
-        $fecha = $_POST['fecha'] ?? '';
-        $detalleJson = $_POST['detalle'] ?? '[]';
-        $detalle = json_decode($detalleJson, true);
+        $fecha   = isset($datos["fecha"]) ? $datos["fecha"] : "";
+        $cedula  = isset($datos["cedula"]) ? $datos["cedula"] : "";
+        $detalle = isset($datos["detalle"]) ? $datos["detalle"] : array();
 
-        if ($cedula === '' || $fecha === '' || empty($detalle))
-        {
-            echo json_encode(array('exito' => false, 'mensaje' => 'Datos incompletos para guardar la factura.'));
-            break;
+        // Calculamos los totales en el servidor (no confiamos solo en el front)
+        $subtotal = 0;
+        foreach ($detalle as $linea) {
+            $subtotal += floatval($linea["precioUnitario"]) * intval($linea["cantidad"]);
+        }
+        $iva = $subtotal * 0.13;
+        $total = $subtotal + $iva;
+
+        // Insertamos primero el encabezado y obtenemos el id generado
+        $idFactura = $Factura->insertarEncabezado($fecha, $cedula, $subtotal, $iva, $total);
+
+        // Insertamos cada linea del detalle asociada al id de la factura
+        foreach ($detalle as $linea) {
+            $codigoProducto = $linea["codigo"];
+            $cantidad = intval($linea["cantidad"]);
+            $precioUnitario = floatval($linea["precioUnitario"]);
+            $subtotalLinea = $precioUnitario * $cantidad;
+
+            $Factura->insertarDetalle($idFactura, $codigoProducto, $cantidad, $precioUnitario, $subtotalLinea);
         }
 
-        $idFactura = $Factura->guardar($cedula, $fecha, $detalle);
-
-        if ($idFactura !== false)
-        {
-            echo json_encode(array('exito' => true, 'id' => $idFactura));
-        }
-        else
-        {
-            echo json_encode(array('exito' => false, 'mensaje' => 'No se pudo guardar la factura.'));
-        }
+        echo json_encode([
+            "exito"   => true,
+            "mensaje" => "Factura registrada",
+            "id"      => $idFactura
+        ]);
         break;
 
-    // Devuelve el encabezado y el detalle de una factura puntual,
-    // usado para volver a cargar el formulario al editar
-    case 'detalle':
-        $id = $_GET['id'] ?? 0;
-        $rsptaEnc = $Factura->buscarEncabezado($id);
-
-        if (!$rsptaEnc || $rsptaEnc->num_rows === 0)
-        {
-            echo json_encode(array('exito' => false, 'mensaje' => 'Factura no encontrada.'));
-            break;
-        }
-
-        $enc = $rsptaEnc->fetch_object();
-        $rsptaDet = $Factura->buscarDetalle($id);
-        $detalle = array();
-
-        while ($fila = $rsptaDet->fetch_object())
-        {
-            $detalle[] = array(
-                'codigo' => $fila->codigo_producto,
-                'nombre' => $fila->nombre_producto,
-                'precio' => (float)$fila->precio_unitario,
-                'cantidad' => (int)$fila->cantidad,
-                'subtotal' => (float)$fila->subtotal
-            );
-        }
-
-        echo json_encode(array(
-            'exito' => true,
-            'encabezado' => array(
-                'id' => $enc->id,
-                'fecha' => $enc->fecha,
-                'cedula' => $enc->cedula_cliente,
-                'nombreCliente' => $enc->nombreCliente
-            ),
-            'detalle' => $detalle
-        ));
-        break;
-
-    // Elimina una factura existente por id
+    // Elimina una factura (el detalle se borra en cascada)
     case 'eliminar':
-        $id = $_POST['id'] ?? 0;
+        $id = isset($datos["id"]) ? intval($datos["id"]) : 0;
+        $respuesta = $Factura->eliminar($id);
 
-        if ((int)$id <= 0)
-        {
-            echo json_encode(array('exito' => false, 'mensaje' => 'Id de factura invalido.'));
-            break;
-        }
-
-        $resultado = $Factura->eliminar($id);
-        echo json_encode(array('exito' => (bool)$resultado));
+        echo json_encode([
+            "exito"   => $respuesta ? true : false,
+            "mensaje" => $respuesta ? "Factura eliminada" : "Factura no se pudo eliminar"
+        ]);
         break;
 
     default:
-        echo json_encode(array('exito' => false, 'mensaje' => 'Accion no reconocida.'));
-        break;
+        echo json_encode(["exito" => false, "mensaje" => "Operacion no valida"]);
 }
 ?>

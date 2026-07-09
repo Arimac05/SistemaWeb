@@ -1,5 +1,5 @@
 <?php
-//Incluimos inicialmente la conexion a la base de datos
+// Incluimos inicialmente la conexion a la base de datos
 require_once __DIR__ . "/../config/Conexion.php";
 
 class Cliente
@@ -8,49 +8,44 @@ class Cliente
     {
     }
 
+    // Devuelve la lista de todos los clientes
+    public function listar()
+    {
+        $sql = "SELECT * FROM cliente ORDER BY nombre ASC";
+        return ejecutarConsulta($sql);
+    }
+
     // Devuelve el registro de un cliente por cedula
     public function buscar($cedula)
     {
-        $cedula = mysqli_real_escape_string($GLOBALS['conexion'], $cedula);
         $sql = "SELECT * FROM cliente WHERE cedula='$cedula'";
         return ejecutarConsulta($sql);
     }
 
-    // Devuelve la lista de todos los clientes
-    public function listar()
+    // Inserta un nuevo cliente
+    public function insertar($cedula, $nombre, $apellido, $telefono, $email, $direccion)
     {
-        $sql = "SELECT cedula, nombre, telefono FROM cliente ORDER BY nombre ASC";
+        $sql = "INSERT INTO cliente (cedula, nombre, apellido, telefono, email, direccion)
+                VALUES ('$cedula', '$nombre', '$apellido', '$telefono', '$email', '$direccion')";
         return ejecutarConsulta($sql);
     }
 
-    // Agrega un nuevo cliente
-    public function agregar($cedula, $nombre, $telefono)
+    // Actualiza los datos de un cliente existente
+    public function actualizar($cedula, $nombre, $apellido, $telefono, $email, $direccion)
     {
-        global $conexion;
-        $cedula = mysqli_real_escape_string($conexion, $cedula);
-        $nombre = mysqli_real_escape_string($conexion, $nombre);
-        $telefono = mysqli_real_escape_string($conexion, $telefono);
-
-        $sql = "INSERT INTO cliente (cedula, nombre, telefono) VALUES ('$cedula', '$nombre', '$telefono')";
-        return ejecutarConsulta($sql);
-    }
-
-    // Edita un cliente existente
-    public function editar($cedula, $nombre, $telefono)
-    {
-        global $conexion;
-        $cedula = mysqli_real_escape_string($conexion, $cedula);
-        $nombre = mysqli_real_escape_string($conexion, $nombre);
-        $telefono = mysqli_real_escape_string($conexion, $telefono);
-
-        $sql = "UPDATE cliente SET nombre='$nombre', telefono='$telefono' WHERE cedula='$cedula'";
+        $sql = "UPDATE cliente SET
+                    nombre='$nombre',
+                    apellido='$apellido',
+                    telefono='$telefono',
+                    email='$email',
+                    direccion='$direccion'
+                WHERE cedula='$cedula'";
         return ejecutarConsulta($sql);
     }
 
     // Elimina un cliente por cedula
     public function eliminar($cedula)
     {
-        $cedula = mysqli_real_escape_string($GLOBALS['conexion'], $cedula);
         $sql = "DELETE FROM cliente WHERE cedula='$cedula'";
         return ejecutarConsulta($sql);
     }

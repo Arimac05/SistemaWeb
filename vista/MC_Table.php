@@ -1,5 +1,5 @@
 <?php
-require('../pdf/fpdf.php');
+require(__DIR__ . '/pdf/fpdf.php');
 
 class PDF_MC_Table extends FPDF
 {

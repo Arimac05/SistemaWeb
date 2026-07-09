@@ -1,25 +1,23 @@
 <?php
-//Incluimos inicialmente la conexion a la base de datos
+// Incluimos inicialmente la conexion a la base de datos
 require_once __DIR__ . "/../config/Conexion.php";
 
 class Factura
 {
-    // Porcentaje de IVA utilizado en toda la facturacion
-    const IVA_PORCENTAJE = 0.13;
-
     public function __construct()
     {
     }
 
-    // Devuelve la lista de todas las facturas (encabezado)
-    // incluyendo el nombre del cliente y la cantidad de productos
+    // Devuelve la lista de facturas con el nombre del cliente,
+    // la cantidad de productos y el total de cada una
     public function listar()
     {
-        $sql = "SELECT f.id, f.fecha, f.cedula_cliente, c.nombre AS nombreCliente,
+        $sql = "SELECT f.id, f.fecha, f.cedula_cliente,
+                       CONCAT(c.nombre, ' ', c.apellido) AS nombre_cliente,
                        f.subtotal, f.iva, f.total,
-                       (SELECT COUNT(*) FROM detalle_factura d WHERE d.id_factura = f.id) AS cantidadProductos
+                       (SELECT COUNT(*) FROM detalle_factura d WHERE d.id_factura = f.id) AS cantidad_productos
                 FROM factura f
-                INNER JOIN cliente c ON c.cedula = f.cedula_cliente
+                INNER JOIN cliente c ON f.cedula_cliente = c.cedula
                 ORDER BY f.id DESC";
         return ejecutarConsulta($sql);
     }
@@ -27,101 +25,51 @@ class Factura
     // Devuelve el encabezado de una factura por id
     public function buscarEncabezado($id)
     {
-        $id = (int)$id;
-        $sql = "SELECT f.id, f.fecha, f.cedula_cliente, c.nombre AS nombreCliente, c.telefono,
+        $sql = "SELECT f.id, f.fecha, f.cedula_cliente,
+                       CONCAT(c.nombre, ' ', c.apellido) AS nombre_cliente,
                        f.subtotal, f.iva, f.total
                 FROM factura f
-                INNER JOIN cliente c ON c.cedula = f.cedula_cliente
-                WHERE f.id = $id";
+                INNER JOIN cliente c ON f.cedula_cliente = c.cedula
+                WHERE f.id=$id";
         return ejecutarConsulta($sql);
     }
 
-    // Devuelve el detalle (lineas de productos) de una factura
-    public function buscarDetalle($id)
+    // Devuelve el detalle (lineas de producto) de una factura
+    public function listarDetalle($idFactura)
     {
-        $id = (int)$id;
-        $sql = "SELECT codigo_producto, nombre_producto, precio_unitario, cantidad, subtotal
-                FROM detalle_factura
-                WHERE id_factura = $id
-                ORDER BY id ASC";
+        $sql = "SELECT d.codigo_producto, p.nombre AS nombre_producto,
+                       d.cantidad, d.precio_unitario, d.subtotal
+                FROM detalle_factura d
+                INNER JOIN producto p ON d.codigo_producto = p.codigo
+                WHERE d.id_factura=$idFactura";
         return ejecutarConsulta($sql);
     }
 
-    // Guarda una factura completa (encabezado + detalle) dentro de una transaccion
-    // $cedula -> cedula del cliente
-    // $fecha  -> fecha de la factura (formato Y-m-d)
-    // $detalle -> arreglo de lineas, cada una con: codigo, nombre, precio, cantidad
-    //
-    // Retorna el id de la factura creada, o false si ocurrio un error
-    public function guardar($cedula, $fecha, $detalle)
+    // Inserta el encabezado de la factura y devuelve el id generado
+    public function insertarEncabezado($fecha, $cedulaCliente, $subtotal, $iva, $total)
     {
         global $conexion;
 
-        if (empty($detalle))
-        {
-            return false;
-        }
+        $sql = "INSERT INTO factura (fecha, cedula_cliente, subtotal, iva, total)
+                VALUES ('$fecha', '$cedulaCliente', $subtotal, $iva, $total)";
+        ejecutarConsulta($sql);
 
-        $cedula = mysqli_real_escape_string($conexion, $cedula);
-        $fecha = mysqli_real_escape_string($conexion, $fecha);
-
-        // Calculamos los totales a partir del detalle recibido
-        $subtotal = 0;
-        foreach ($detalle as $linea)
-        {
-            $subtotal += (float)$linea['precio'] * (int)$linea['cantidad'];
-        }
-        $iva = $subtotal * self::IVA_PORCENTAJE;
-        $total = $subtotal + $iva;
-
-        // Iniciamos una transaccion para asegurar que el encabezado
-        // y el detalle se guarden juntos
-        $conexion->begin_transaction();
-
-        try
-        {
-            $sqlFactura = "INSERT INTO factura (fecha, cedula_cliente, subtotal, iva, total)
-                            VALUES ('$fecha', '$cedula', $subtotal, $iva, $total)";
-            if (!ejecutarConsulta($sqlFactura))
-            {
-                throw new Exception("No se pudo guardar el encabezado de la factura");
-            }
-
-            $idFactura = $conexion->insert_id;
-
-            foreach ($detalle as $linea)
-            {
-                $codigo = mysqli_real_escape_string($conexion, $linea['codigo']);
-                $nombre = mysqli_real_escape_string($conexion, $linea['nombre']);
-                $precio = (float)$linea['precio'];
-                $cantidad = (int)$linea['cantidad'];
-                $subtotalLinea = $precio * $cantidad;
-
-                $sqlDetalle = "INSERT INTO detalle_factura
-                                (id_factura, codigo_producto, nombre_producto, precio_unitario, cantidad, subtotal)
-                                VALUES ($idFactura, '$codigo', '$nombre', $precio, $cantidad, $subtotalLinea)";
-
-                if (!ejecutarConsulta($sqlDetalle))
-                {
-                    throw new Exception("No se pudo guardar el detalle de la factura");
-                }
-            }
-
-            $conexion->commit();
-            return $idFactura;
-        }
-        catch (Exception $e)
-        {
-            $conexion->rollback();
-            return false;
-        }
+        // insert_id devuelve el id autoincremental que acaba de generarse
+        return $conexion->insert_id;
     }
 
-    // Elimina una factura (el detalle se elimina en cascada, ver BD Facturacion.sql)
+    // Inserta una linea de detalle asociada a una factura
+    public function insertarDetalle($idFactura, $codigoProducto, $cantidad, $precioUnitario, $subtotal)
+    {
+        $sql = "INSERT INTO detalle_factura (id_factura, codigo_producto, cantidad, precio_unitario, subtotal)
+                VALUES ($idFactura, '$codigoProducto', $cantidad, $precioUnitario, $subtotal)";
+        return ejecutarConsulta($sql);
+    }
+
+    // Elimina una factura (el detalle se borra automaticamente por ON DELETE CASCADE)
     public function eliminar($id)
     {
-        $id = (int)$id;
-        $sql = "DELETE FROM factura WHERE id = $id";
+        $sql = "DELETE FROM factura WHERE id=$id";
         return ejecutarConsulta($sql);
     }
 }

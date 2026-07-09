@@ -1,5 +1,5 @@
 <?php
-//Incluimos inicialmente la conexion a la base de datos
+// Incluimos inicialmente la conexion a la base de datos
 require_once __DIR__ . "/../config/Conexion.php";
 
 class Producto
@@ -8,48 +8,45 @@ class Producto
     {
     }
 
-    // Devuelve el registro de un producto por codigo
-    public function buscar($codigo)
-    {
-        $codigo = mysqli_real_escape_string($GLOBALS['conexion'], $codigo);
-        $sql = "SELECT * FROM producto WHERE codigo='$codigo'";
-        return ejecutarConsulta($sql);
-    }
-
-    // Devuelve la lista de todos los productos
+    // Devuelve la lista de todos los productos junto con el nombre de su categoria
     public function listar()
     {
-        $sql = "SELECT p.codigo, p.nombre, p.precio, p.id_categoria, c.nombre AS nombreCategoria
+        $sql = "SELECT p.codigo, p.nombre, p.descripcion, p.precio, p.stock,
+                       p.id_categoria, c.nombre AS nombre_categoria
                 FROM producto p
-                LEFT JOIN categoria c ON c.id = p.id_categoria
+                INNER JOIN categoria c ON p.id_categoria = c.id
                 ORDER BY p.nombre ASC";
         return ejecutarConsulta($sql);
     }
 
-    // Agrega un nuevo producto
-    public function agregar($codigo, $nombre, $precio, $idCategoria)
+    // Devuelve el registro de un producto por codigo
+    public function buscar($codigo)
     {
-        global $conexion;
-        $codigo = mysqli_real_escape_string($conexion, $codigo);
-        $nombre = mysqli_real_escape_string($conexion, $nombre);
-        $precio = (float)$precio;
-        $idCategoria = (int)$idCategoria;
-
-        $sql = "INSERT INTO producto (codigo, nombre, precio, id_categoria)
-                VALUES ('$codigo', '$nombre', $precio, $idCategoria)";
+        $sql = "SELECT p.codigo, p.nombre, p.descripcion, p.precio, p.stock,
+                       p.id_categoria, c.nombre AS nombre_categoria
+                FROM producto p
+                INNER JOIN categoria c ON p.id_categoria = c.id
+                WHERE p.codigo='$codigo'";
         return ejecutarConsulta($sql);
     }
 
-    // Edita un producto existente
-    public function editar($codigo, $nombre, $precio, $idCategoria)
+    // Inserta un nuevo producto
+    public function insertar($codigo, $nombre, $descripcion, $precio, $stock, $idCategoria)
     {
-        global $conexion;
-        $codigo = mysqli_real_escape_string($conexion, $codigo);
-        $nombre = mysqli_real_escape_string($conexion, $nombre);
-        $precio = (float)$precio;
-        $idCategoria = (int)$idCategoria;
+        $sql = "INSERT INTO producto (codigo, nombre, descripcion, precio, stock, id_categoria)
+                VALUES ('$codigo', '$nombre', '$descripcion', $precio, $stock, $idCategoria)";
+        return ejecutarConsulta($sql);
+    }
 
-        $sql = "UPDATE producto SET nombre='$nombre', precio=$precio, id_categoria=$idCategoria
+    // Actualiza los datos de un producto existente
+    public function actualizar($codigo, $nombre, $descripcion, $precio, $stock, $idCategoria)
+    {
+        $sql = "UPDATE producto SET
+                    nombre='$nombre',
+                    descripcion='$descripcion',
+                    precio=$precio,
+                    stock=$stock,
+                    id_categoria=$idCategoria
                 WHERE codigo='$codigo'";
         return ejecutarConsulta($sql);
     }
@@ -57,7 +54,6 @@ class Producto
     // Elimina un producto por codigo
     public function eliminar($codigo)
     {
-        $codigo = mysqli_real_escape_string($GLOBALS['conexion'], $codigo);
         $sql = "DELETE FROM producto WHERE codigo='$codigo'";
         return ejecutarConsulta($sql);
     }
